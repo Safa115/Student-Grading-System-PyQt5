@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-
 class Person(ABC):
     """
     Abstract class representing a general person in the system.

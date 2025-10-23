@@ -93,11 +93,39 @@ class Instructor(Person):
 
 
     # ---------- Additional Methods ----------
-    def assign_grade(self, student, course, grade):
+    
+    def assign_grade(self, student_id: int, course_id: int, grade_value: float):
         """
-        Placeholder method for assigning a grade to a student for a course.
+        Assign or update a grade for a student in a specific course.
         """
-        pass
+        conn = sqlite3.connect("student_grading.db")
+        cursor = conn.cursor()
+
+        # Check if a grade already exists for this student & course
+        cursor.execute("""
+            SELECT grade_id FROM Grade WHERE student_id = ? AND course_id = ?
+        """, (student_id, course_id))
+        existing = cursor.fetchone()
+        if existing:
+            # Update the existing grade
+            cursor.execute("""
+                UPDATE Grade
+                SET grade_value = ?
+                WHERE student_id = ? AND course_id = ?
+            """, (grade_value, student_id, course_id))
+            print(f"Updated grade for student {student_id} in course {course_id} to {grade_value}.")
+        else:
+            # Insert a new grade
+            cursor.execute("""
+                INSERT INTO Grade (student_id, course_id, grade_value)
+                VALUES (?, ?, ?)
+            """, (student_id, course_id, grade_value))
+            print(f"Assigned grade {grade_value} to student {student_id} for course {course_id}.")
+
+        conn.commit()
+        conn.close()
+
+
 
     def __str__(self):
         """

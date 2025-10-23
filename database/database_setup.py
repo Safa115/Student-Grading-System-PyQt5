@@ -52,6 +52,22 @@ def create_database():
     )
     """)
 
+        # ---------- Enrollment table ----------
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS Enrollment (
+        enrollment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER NOT NULL,
+        course_id INTEGER NOT NULL,
+        FOREIGN KEY (student_id) REFERENCES Student(student_id),
+        FOREIGN KEY (course_id) REFERENCES Course(course_id)
+    )
+    """)
+    
+
+   
+
+
+
     # Save changes and close connection
     conn.commit()
     conn.close()

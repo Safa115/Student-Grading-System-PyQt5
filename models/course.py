@@ -92,16 +92,61 @@ class Course:
         conn.commit()
         conn.close()
     #---------- Additional Methods ----------
-    def enroll_student(self,student):
-        """
-        Placeholder method for enrolling a student in the course.
-        """
-        pass
+
+    def enroll_student(self, student_id:int):
+     """
+       Enroll a student in this course by adding a record to the Enrollment table.
+     """
+     conn = self.connect()
+     cursor = conn.cursor()
+
+     # Check if already enrolled
+     cursor.execute("""
+        SELECT * FROM Enrollment WHERE student_id = ? AND course_id = ?
+     """, (student_id, self.course_id))
+     exists = cursor.fetchone()
+
+     if exists:
+        print(f" Student {student_id} is already enrolled in course {self.course_id}.")
+     else:
+        cursor.execute("""
+            INSERT INTO Enrollment (student_id, course_id)
+            VALUES (?, ?)
+        """, (student_id, self.course_id))
+        conn.commit()
+        print(f"Student {student_id} enrolled successfully in {self.course_name}.")
+
+     conn.close()
+
+       
     def course_summary(self):
-        """
-        Placeholder method for providing a summary of the course.
-        """
-        pass
+     """
+     Returns a summary of the course with instructor name and number of enrolled students.
+     """
+     conn = self.connect()
+     cursor = conn.cursor()
+
+    # Instructor name
+     cursor.execute("SELECT name FROM Instructor WHERE instructor_id = ?", (self.instructor_id,))
+     instructor_row = cursor.fetchone()
+     instructor_name = instructor_row[0] if instructor_row else "Unknown"
+
+    # Number of enrolled students
+     cursor.execute("SELECT COUNT(*) FROM Enrollment WHERE course_id = ?", (self.course_id,))
+     count_row = cursor.fetchone()
+     enrolled_count = count_row[0] if count_row else 0
+
+     conn.close()
+
+     return (
+        f"📘 Course Summary:\n"
+        f"- ID: {self.course_id}\n"
+        f"- Name: {self.course_name}\n"
+        f"- Credit Hours: {self.credit_hours}\n"
+        f"- Instructor: {instructor_name}\n"
+        f"- Enrolled Students: {enrolled_count}"
+    )
+
     def __str__(self):
         """
         Returns a readable representation of the course.

@@ -37,11 +37,48 @@ class Student(Person):
          
          #---------- Additional Methods ----------
     def calculate_gpa(self):
-           """
-        Placeholder method for GPA calculation.
-        Later will calculate based on student's grades and credit hours.
         """
-           pass
+        Calculate the student's GPA based on their grades in the Grade table.
+        GPA is computed on a 4.0 scale and then updated in the database.
+        """
+        db = DatabaseManager()
+    
+        # Fetch all grades of the student from the Grade table
+        grades = db.fetch_all("""
+           SELECT grade_value FROM Grade WHERE student_id = ?
+      """, (self.student_id,))
+
+        if not grades:
+            print(f"No grades found for student ID {self.student_id}.")
+            db.close()
+            return
+
+        # Calculate the GPA on a 4.0 scale
+        total_points = 0
+        for (grade_value,) in grades:
+            if grade_value >= 90:
+                total_points += 4.0
+            elif grade_value >= 80:
+                total_points += 3.0
+            elif grade_value >= 70:
+                total_points += 2.0
+            elif grade_value >= 60:
+                total_points += 1.0
+            else:
+                total_points += 0.0
+
+        gpa = round(total_points / len(grades), 2)
+        self.set_gpa(gpa)
+
+        # Update the GPA in the Student table
+        db.execute_query("""
+            UPDATE Student SET gpa = ? WHERE student_id = ?
+        """, (gpa, self.student_id))
+
+        db.close()
+        print(f"GPA for student ID {self.student_id} updated to {gpa}")
+
+
     def __str__(self):
            """
         Returns a readable representation of the student.

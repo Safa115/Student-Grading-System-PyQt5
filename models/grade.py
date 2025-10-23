@@ -30,10 +30,36 @@ class Grade:
 
     # ---------- Additional Methods ----------
     def calculate_grade_points(self):
-        pass
+        """
+        Calculate grade points based on the numeric grade.
+        Typical 4.0 GPA scale conversion.
+        """
+        if self.grade >= 90:
+            return 4.0
+        elif self.grade >= 80:
+            return 3.0
+        elif self.grade >= 70:
+            return 2.0
+        elif self.grade >= 60:
+            return 1.0
+        else:
+            return 0.0
+
 
     def get_letter_grade(self):
-        pass
+        """
+        Convert numeric grade to letter grade.
+        """
+        if self.grade >= 90:
+            return "A"
+        elif self.grade >= 80:
+            return "B"
+        elif self.grade >= 70:
+            return "C"
+        elif self.grade >= 60:
+            return "D"
+        else:
+            return "F"
 
     # ---------- Database Integration ----------
     def save_to_db(self):

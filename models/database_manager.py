@@ -6,7 +6,7 @@ class DatabaseManager:
     updating, deleting, and retrieving records from the database.
     """
 
-    def __init__(self, db_name="student_grading.db"):
+    def __init__(self, db_name=r"C:\StudentGradingSystem\student_grading.db"):
         self.db_name = db_name
 
     # ---------- Internal connection methods ----------
@@ -120,46 +120,47 @@ class DatabaseManager:
         grades = cursor.fetchall()
         conn.close()
         return grades
-        # ---------- GPA Calculation ----------
-    def calculate_gpa(self, student_id):
-        """
-        Calculates the GPA for a specific student based on their grades and course credit hours.
-        GPA = sum(grade_points * credit_hours) / sum(credit_hours)
-        Assuming 100 scale => A:90+, B:80+, C:70+, D:60+, F:<60
-        """
-        conn = self.connect()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT Grade.grade_value, Course.credit_hours
-            FROM Grade
-            JOIN Course ON Grade.course_id = Course.course_id
-            WHERE Grade.student_id = ?
-        """, (student_id,))
-        data = cursor.fetchall()
+
+# ---------- GPA Calculation ----------
+    def calculate_gpa(self, student_id,course_id):
+      """
+    Calculate and update the GPA for a specific student (on a 4.0 scale),
+    using Grade class's calculate_grade_points().
+    """
+      from models.grade import Grade  # Import here to avoid circular import
+
+      conn = self.connect()
+      cursor = conn.cursor()
+
+    # Fetch all numeric grades for this student
+      cursor.execute("""
+        SELECT grade_value FROM Grade WHERE student_id=?
+    """, (student_id,))
+      grades = cursor.fetchall()
+
+      if not grades:
+        print(f"No grades found for student {student_id}.")
         conn.close()
+        return 0.0
 
-        if not data:
-            return 0.0
+      total_points = 0
+      for (grade_value,) in grades:
+        # Create a temporary Grade object to use its method
+        g = Grade(student_id=student_id, course_id=course_id, grade=grade_value)
 
-        total_points = 0
-        total_credits = 0
+        total_points += g.calculate_grade_points()
 
-        for grade_value, credit_hours in data:
-            if grade_value >= 90:
-                grade_point = 4.0
-            elif grade_value >= 80:
-                grade_point = 3.0
-            elif grade_value >= 70:
-                grade_point = 2.0
-            elif grade_value >= 60:
-                grade_point = 1.0
-            else:
-                grade_point = 0.0
+      gpa = round(total_points / len(grades), 2)
 
-            total_points += grade_point * credit_hours
-            total_credits += credit_hours
+    # Update student's GPA in the Student table
+      cursor.execute("""
+        UPDATE Student SET gpa=? WHERE student_id=?
+    """, (gpa, student_id))
+      conn.commit()
+      conn.close()
 
-        gpa = total_points / total_credits if total_credits > 0 else 0.0
-        return round(gpa, 2)
-    
+      print(f"GPA for student {student_id}: {gpa}")
+      return gpa
+
+
 

@@ -36,71 +36,44 @@ class Student(Person):
               raise ValueError("Credit hours cannot be negative")
          
          #---------- Additional Methods ----------
-    def calculate_gpa(self):
-        """
-        Calculate the student's GPA based on their grades in the Grade table.
-        GPA is computed on a 4.0 scale and then updated in the database.
-        """
-        db = DatabaseManager()
-    
-        # Fetch all grades of the student from the Grade table
-        grades = db.fetch_all("""
-           SELECT grade_value FROM Grade WHERE student_id = ?
-      """, (self.student_id,))
-
-        if not grades:
-            print(f"No grades found for student ID {self.student_id}.")
-            db.close()
-            return
-
-        # Calculate the GPA on a 4.0 scale
-        total_points = 0
-        for (grade_value,) in grades:
-            if grade_value >= 90:
-                total_points += 4.0
-            elif grade_value >= 80:
-                total_points += 3.0
-            elif grade_value >= 70:
-                total_points += 2.0
-            elif grade_value >= 60:
-                total_points += 1.0
-            else:
-                total_points += 0.0
-
-        gpa = round(total_points / len(grades), 2)
-        self.set_gpa(gpa)
-
-        # Update the GPA in the Student table
-        db.execute_query("""
-            UPDATE Student SET gpa = ? WHERE student_id = ?
-        """, (gpa, self.student_id))
-
-        db.close()
-        print(f"GPA for student ID {self.student_id} updated to {gpa}")
-
-
-    def __str__(self):
-           """
-        Returns a readable representation of the student.
-        """
-           return f"Student(ID: {self.student_id}, Name: {self.name},GPA: {self.gpa})"
+    def display_info(self):
+        return f"Student: {self.name}, Email: {self.email}, GPA: {self.gpa}, Credit Hours: {self.credit_hours}"
     
      # ---------- Database Integration ----------
     def save_to_db(self):
-        """
-        Save the student into the database.
-        If the student already exists, update instead.
-        """
-        db = DatabaseManager()
-        if self.student_id:  # Existing student → update
-            db.execute_query("""
-                UPDATE Student SET name=?, email=?, credit_hours=? WHERE student_id=?
-            """, (self.name, self.email, self.credit_hours, self.student_id))
-        else:  # New student → insert
-            db.execute_query("""
-                INSERT INTO Student (name, email, credit_hours) VALUES (?, ?, ?)
-            """, (self.name, self.email, self.credit_hours))
-        db.close()
+      """
+    Save the student into the database.
+    If the student already exists (same email), print a message instead of inserting again.
+    If the student_id exists, update instead.
+    """
+      db = DatabaseManager()
+      conn = db.connect()
+      cursor = conn.cursor()
+
+    # Check if student already exists by email
+      cursor.execute("SELECT * FROM Student WHERE email = ?", (self.email,))
+      existing = cursor.fetchone()
+
+      if existing and not self.student_id:
+        print(f"Student with email '{self.email}' already exists.")
+        conn.close()
+        return
+
+      if self.student_id:  # Existing student → update
+        cursor.execute("""
+            UPDATE Student 
+            SET name = ?, email = ?, credit_hours = ? 
+            WHERE student_id = ?
+        """, (self.name, self.email, self.credit_hours, self.student_id))
+      else:  # New student → insert
+        cursor.execute("""
+            INSERT INTO Student (name, email, credit_hours)
+            VALUES (?, ?, ?)
+        """, (self.name, self.email, self.credit_hours))
+
+      conn.commit()
+      conn.close()
+      print(f"Student '{self.name}' saved successfully!")
 
     @staticmethod
     def get_all_students():

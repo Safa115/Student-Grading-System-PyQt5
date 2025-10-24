@@ -64,7 +64,7 @@ class Grade:
     # ---------- Database Integration ----------
     def save_to_db(self):
         """Insert a new grade record into the database."""
-        conn = sqlite3.connect("student_grading.db")
+        conn = sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO Grade (student_id, course_id, grade_value) VALUES (?, ?, ?)",
@@ -76,7 +76,7 @@ class Grade:
     @staticmethod
     def get_grades_by_student(student_id):
         """Fetch all grades for a given student."""
-        conn = sqlite3.connect("student_grading.db")
+        conn = sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM Grade WHERE student_id = ?", (student_id,))
         rows = cursor.fetchall()
@@ -86,7 +86,7 @@ class Grade:
     @staticmethod
     def update_grade(student_id, course_id, new_grade):
         """Update an existing grade for a student in a specific course."""
-        conn = sqlite3.connect("student_grading.db")
+        conn = sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
         cursor = conn.cursor()
         cursor.execute(
             "UPDATE Grade SET grade_value = ? WHERE student_id = ? AND course_id = ?",
@@ -98,7 +98,7 @@ class Grade:
     @staticmethod
     def delete_grade(student_id, course_id):
         """Delete a grade record for a given student and course."""
-        conn = sqlite3.connect("student_grading.db")
+        conn = sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
         cursor = conn.cursor()
         cursor.execute(
             "DELETE FROM Grade WHERE student_id = ? AND course_id = ?",

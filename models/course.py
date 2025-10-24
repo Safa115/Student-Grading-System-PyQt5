@@ -38,18 +38,33 @@ class Course:
     @staticmethod
     def connect():
         """Connect to the SQLite database."""
-        return sqlite3.connect("database/student_grading.db")
+        return sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
 
     def save_to_db(self):
-        """Insert a new course record into the database."""
-        conn = self.connect()
-        cursor = conn.cursor()
+      """
+    Saves the course to the database.
+    If a course with the same name already exists, use its ID instead of inserting a new one.
+    """
+      conn = sqlite3.connect("C:\\StudentGradingSystem\\student_grading.db")
+      cursor = conn.cursor()
+
+      # Check if course already exists by name
+      cursor.execute("SELECT course_id FROM Course WHERE name = ?", (self.course_name,))
+      existing = cursor.fetchone()
+
+      if existing:
+        self.course_id = existing[0]
+        print(f"Course '{self.course_name}' already exists with ID {self.course_id}.")
+      else:
         cursor.execute("""
             INSERT INTO Course (name, credit_hours, instructor_id)
             VALUES (?, ?, ?)
         """, (self.course_name, self.credit_hours, self.instructor_id))
+        self.course_id = cursor.lastrowid
         conn.commit()
-        conn.close()
+        print(f"New course '{self.course_name}' added with ID {self.course_id}.")
+
+      conn.close()
 
     @staticmethod
     def get_all_courses():
@@ -147,10 +162,5 @@ class Course:
         f"- Enrolled Students: {enrolled_count}"
     )
 
-    def __str__(self):
-        """
-        Returns a readable representation of the course.
-        """
-        return f"Course(ID: {self.course_id}, Name: {self.course_name}, Credit Hours: {self.credit_hours}, Instructor ID: {self.instructor_id})"
     
 

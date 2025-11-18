@@ -7,7 +7,8 @@ class Instructor(Person):
     """
     Class representing an instructor, inheriting from Person.
     """
-    def __init__(self, name, email, instructor_id: int):
+    # 1. Tweak: make instructor_id optional for new instances
+    def __init__(self, name, email, instructor_id: int = None):
         super().__init__(name, email)
         self.instructor_id = instructor_id
         
@@ -22,23 +23,28 @@ class Instructor(Person):
 
     # ---------- Database Integration ----------
     def save_to_db(self):
-      conn = sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
-      cursor = conn.cursor()
-    
-    # check if email exists
-      cursor.execute("SELECT * FROM Instructor WHERE email = ?", (self.email,))
-      existing = cursor.fetchone()
-      if existing:
-        print(f"Instructor with email {self.email} already exists.")
+        conn = sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
+        cursor = conn.cursor()
+        
+        # 2. Unified INSERT or UPDATE logic
+        if self.instructor_id is not None:
+            # Update Existing Instructor
+            cursor.execute("UPDATE Instructor SET name = ?, email = ? WHERE instructor_id = ?",
+                           (self.name, self.email, self.instructor_id))
+            print(f"Instructor ID {self.instructor_id} updated successfully!")
+        else:
+            # Insert New Instructor
+            cursor.execute("""
+                INSERT INTO Instructor (name, email)
+                VALUES (?, ?)
+            """, (self.name, self.email))
+            
+            # Retrieve the new ID and store it in the object
+            self.instructor_id = cursor.lastrowid 
+            print(f"New Instructor added with ID: {self.instructor_id}")
+            
+        conn.commit()
         conn.close()
-        return
-
-      cursor.execute("""
-        INSERT INTO Instructor (name, email)
-        VALUES (?, ?)
-    """, (self.name, self.email))
-      conn.commit()
-      conn.close()
 
 
     @staticmethod
@@ -54,7 +60,6 @@ class Instructor(Person):
         return instructors
     
 
-
     @staticmethod
     def delete_instructor(instructor_id):
         """
@@ -68,67 +73,45 @@ class Instructor(Person):
         print(f"Instructor with ID {instructor_id} deleted successfully!")
 
 
-    def update_instructor(self, new_name=None, new_email=None):
-        """
-        Update the instructor’s information in the database.
-        """
-        conn = sqlite3.connect("student_grading.db")
-        cursor = conn.cursor()
-
-        if new_name:
-            cursor.execute("UPDATE Instructor SET name = ? WHERE instructor_id = ?", (new_name, self.instructor_id))
-            self.name = new_name
-
-        if new_email:
-            cursor.execute("UPDATE Instructor SET email = ? WHERE instructor_id = ?", (new_email, self.instructor_id))
-            self.email = new_email
-
-       
-
-        conn.commit()
-        conn.close()
-        print(f"Instructor {self.instructor_id} updated successfully!")
-
-
+    # Removed update_instructor method since save_to_db handles updates now
+    
 
     # ---------- Additional Methods ----------
     
     def assign_grade(self, student_id, course_id, grade_value):
-      """
-    Assign or update a student's grade for a specific course,
-    then automatically update the student's GPA.
-    """
-       
+        """
+        Assign or update a student's grade for a specific course,
+        then automatically update the student's GPA.
+        """
+        db = DatabaseManager()
+        conn = db.connect()
+        cursor = conn.cursor()
 
-      db = DatabaseManager()
-      conn = db.connect()
-      cursor = conn.cursor()
-
-    # Check if grade already exists for this student & course
-      cursor.execute("""
-        SELECT grade_id FROM Grade WHERE student_id=? AND course_id=?
-    """, (student_id, course_id))
-      existing_grade = cursor.fetchone()
-
-      if existing_grade:
-        # Update existing grade
+        # Check if grade already exists for this student & course
         cursor.execute("""
-            UPDATE Grade SET grade_value=? WHERE student_id=? AND course_id=?
-        """, (grade_value, student_id, course_id))
-        print(f"Updated grade for student {student_id} in course {course_id} to {grade_value}.")
-      else:
-        # Insert new grade
-        cursor.execute("""
-            INSERT INTO Grade (student_id, course_id, grade_value)
-            VALUES (?, ?, ?)
-        """, (student_id, course_id, grade_value))
-        print(f"Assigned grade {grade_value} to student {student_id} in course {course_id}.")
+            SELECT grade_id FROM Grade WHERE student_id=? AND course_id=?
+        """, (student_id, course_id))
+        existing_grade = cursor.fetchone()
 
-      conn.commit()
-    #  Automatically recalculate GPA after updating grade
-      db.calculate_gpa(student_id,course_id)
-      conn.close()
+        if existing_grade:
+            # Update existing grade
+            cursor.execute("""
+                UPDATE Grade SET grade_value=? WHERE student_id=? AND course_id=?
+            """, (grade_value, student_id, course_id))
+            print(f"Updated grade for student {student_id} in course {course_id} to {grade_value}.")
+        else:
+            # Insert new grade
+            cursor.execute("""
+                INSERT INTO Grade (student_id, course_id, grade_value)
+                VALUES (?, ?, ?)
+            """, (student_id, course_id, grade_value))
+            print(f"Assigned grade {grade_value} to student {student_id} in course {course_id}.")
+
+        conn.commit()
+        # Automatically recalculate GPA after updating grade
+        db.calculate_gpa(student_id,course_id)
+        conn.close()
 
 
     def display_info(self):
-        return f"Instructor: {self.name}, Email: {self.email}"
+        return f"Instructor: {self.name}, Email: {self.email}, ID: {self.instructor_id}"

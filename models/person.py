@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 class Person(ABC):
     """
     Abstract class representing a general person in the system.
@@ -22,6 +23,12 @@ class Person(ABC):
     @property
     def email(self) -> str:
         return self._email
+
+    @email.setter
+    def email(self, value: str):
+        if not value:
+            raise ValueError("Email cannot be empty")
+        self._email = value
 
     @abstractmethod
     def display_info(self):

@@ -1,9 +1,29 @@
 import sqlite3
+import os
+import sys
 
 class DatabaseManager:
-    def __init__(self, db_name=r"student_grading.db"):
-        self.db_name = db_name
+    def __init__(self, db_name=None):
+        if db_name is None:
+            self.db_name = self.get_db_path()
+        else:
+            self.db_name = db_name
+            
         self.create_tables()
+
+    def get_db_path(self):
+        """
+        Determines the path to the database file.
+        - If running as an .exe (frozen), store it next to the executable.
+        - If running as a script, store it in the project root folder.
+        """
+        if getattr(sys, 'frozen', False):
+            base_path = os.path.dirname(sys.executable)
+        else:
+            # Go up one level from 'models' to the root folder
+            base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        
+        return os.path.join(base_path, "student_grading.db")
 
     def connect(self):
         return sqlite3.connect(self.db_name)
@@ -164,6 +184,8 @@ class DatabaseManager:
 
     # ---------- GPA Calculation (Weighted) ----------
     def calculate_gpa(self, student_id, course_id=None):
+        from models.grade import Grade 
+
         conn = self.connect()
         cursor = conn.cursor()
 
@@ -186,7 +208,6 @@ class DatabaseManager:
         total_credits = 0
 
         for grade_val, credit_hours in records:
-            # Convert numeric grade to 4.0 scale points
             if grade_val >= 90: points = 4.0
             elif grade_val >= 80: points = 3.0
             elif grade_val >= 70: points = 2.0
@@ -225,7 +246,7 @@ class DatabaseManager:
         cursor.execute("SELECT COUNT(*) FROM Instructor")
         total_instructors = cursor.fetchone()[0]
 
-        cursor.execute("SELECT AVG(gpa) FROM Student")
+        cursor.execute("SELECT AVG(gpa) FROM Student WHERE gpa > 0") 
         avg_gpa = cursor.fetchone()[0]
         avg_gpa = round(avg_gpa, 2) if avg_gpa else 0.0
 

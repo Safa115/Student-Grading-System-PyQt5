@@ -1,17 +1,23 @@
 import sqlite3
+import os
+import sys
 from models.person import Person
 
 class Student(Person):
-    """
-    Class representing a student, inheriting from Person.
-    """
     def __init__(self, name: str, email: str, student_id: int = None, credit_hours: int = 0, gpa: float = 0.0):
         super().__init__(name, email)
         self.student_id = student_id
         self.credit_hours = credit_hours
         self.gpa = gpa
+        self.db_path = self.get_db_path()
 
-    # ---------- Encapsulation ----------
+    def get_db_path(self):
+        if getattr(sys, 'frozen', False):
+            base_path = os.path.dirname(sys.executable)
+        else:
+            base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        return os.path.join(base_path, "student_grading.db")
+
     def get_student_id(self):
         return self.student_id
 
@@ -24,16 +30,11 @@ class Student(Person):
     def get_credit_hours(self):
         return self.credit_hours
 
-    # ---------- Database Integration ----------
     def save_to_db(self):
-        """
-        Save or update the student into the database.
-        """
-        conn = sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
+        conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
         if self.student_id:
-            # Update existing student (Name and Email only, GPA/Hours are updated by Grades)
             cursor.execute("""
                 UPDATE Student 
                 SET name = ?, email = ?
@@ -41,8 +42,6 @@ class Student(Person):
             """, (self.name, self.email, self.student_id))
             print(f"Student ID {self.student_id} updated.")
         else:
-            # Insert new student
-            # Check duplicates first
             cursor.execute("SELECT student_id FROM Student WHERE email = ?", (self.email,))
             if cursor.fetchone():
                 print(f"Student with email '{self.email}' already exists.")
@@ -62,26 +61,30 @@ class Student(Person):
 
     @staticmethod
     def get_all_students():
-        """
-        Retrieve all students with specific columns for the UI table.
-        Returns: list of tuples (id, name, email, credit_hours, gpa)
-        """
-        conn = sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
+        # Helper to get DB path statically
+        if getattr(sys, 'frozen', False):
+            base = os.path.dirname(sys.executable)
+        else:
+            base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        path = os.path.join(base, "student_grading.db")
+
+        conn = sqlite3.connect(path)
         cursor = conn.cursor()
-        
-        # Explicitly select columns in the order the UI expects
         cursor.execute("SELECT student_id, name, email, credit_hours, gpa FROM Student")
-        
         students = cursor.fetchall()
         conn.close()
         return students
 
     @staticmethod
     def delete_student(student_id: int):
-        """
-        Delete a student by ID.
-        """
-        conn = sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
+        # Helper to get DB path statically
+        if getattr(sys, 'frozen', False):
+            base = os.path.dirname(sys.executable)
+        else:
+            base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        path = os.path.join(base, "student_grading.db")
+
+        conn = sqlite3.connect(path)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM Student WHERE student_id = ?", (student_id,))
         conn.commit()

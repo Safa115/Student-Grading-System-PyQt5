@@ -1,117 +1,96 @@
 import sqlite3
+from models.database_manager import DatabaseManager
 
 class Grade:
-    def __init__(self, student_id: int, course_id: int, grade: float):
+    def __init__(self, student_id: int, course_id: int, grade_value: float = None, grade: float = None):
         self.student_id = student_id
         self.course_id = course_id
-        self.grade = grade
-
-    # ---------- Encapsulation ----------
-    def get_student_id(self):
-        return self.__student_id
-
-    def set_student_id(self, student_id: int):
-        self.__student_id = student_id
-
-    def get_course_id(self):
-        return self.__course_id
-
-    def set_course_id(self, course_id: int):
-        self.__course_id = course_id
-
-    def get_grade(self):
-        return self.__grade
-
-    def set_grade(self, grade: float):
-        if 0.0 <= grade <= 100.0:
-            self.__grade = grade
+        
+        # Handle both parameter names to avoid errors from legacy calls
+        if grade_value is not None:
+            self.grade_value = float(grade_value)
+        elif grade is not None:
+            self.grade_value = float(grade)
         else:
-            raise ValueError("Grade must be between 0.0 and 100.0")
+            self.grade_value = 0.0
 
-    # ---------- Additional Methods ----------
-    def calculate_grade_points(self):
+    def assign_grade(self):
         """
-        Calculate grade points based on the numeric grade.
-        Typical 4.0 GPA scale conversion.
+        Assigns or Updates a grade. 
+        If the grade exists, it updates it. If not, it inserts a new one.
+        Then triggers GPA calculation.
         """
-        if self.grade >= 90:
-            return 4.0
-        elif self.grade >= 80:
-            return 3.0
-        elif self.grade >= 70:
-            return 2.0
-        elif self.grade >= 60:
-            return 1.0
-        else:
-            return 0.0
-
-
-    def get_letter_grade(self):
-        """
-        Convert numeric grade to letter grade.
-        """
-        if self.grade >= 90:
-            return "A"
-        elif self.grade >= 80:
-            return "B"
-        elif self.grade >= 70:
-            return "C"
-        elif self.grade >= 60:
-            return "D"
-        else:
-            return "F"
-
-    # ---------- Database Integration ----------
-    def save_to_db(self):
-        """Insert a new grade record into the database."""
-        conn = sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
+        conn = sqlite3.connect(r"student_grading.db")
         cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO Grade (student_id, course_id, grade_value) VALUES (?, ?, ?)",
-            (self.student_id, self.course_id, self.grade)
-        )
+
+        # Check if grade exists
+        cursor.execute("SELECT * FROM Grade WHERE student_id = ? AND course_id = ?", 
+                       (self.student_id, self.course_id))
+        existing = cursor.fetchone()
+
+        if existing:
+            # Update existing grade
+            cursor.execute("""
+                UPDATE Grade 
+                SET grade_value = ? 
+                WHERE student_id = ? AND course_id = ?
+            """, (self.grade_value, self.student_id, self.course_id))
+            print(f"Updated grade for Student {self.student_id} in Course {self.course_id}")
+        else:
+            # Insert new grade
+            cursor.execute("""
+                INSERT INTO Grade (student_id, course_id, grade_value) 
+                VALUES (?, ?, ?)
+            """, (self.student_id, self.course_id, self.grade_value))
+            print(f"Assigned new grade for Student {self.student_id}")
+
         conn.commit()
         conn.close()
 
+        # Automatically recalculate GPA after updating grade
+        try:
+            db = DatabaseManager()
+            db.calculate_gpa(self.student_id, self.course_id)
+        except Exception as e:
+            print(f"Warning: GPA Calculation issue: {e}")
+
     @staticmethod
-    def get_grades_by_student(student_id):
-        """Fetch all grades for a given student."""
-        conn = sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
+    def get_all_grades_info():
+        """
+        Returns list of tuples: (student_id, student_name, course_id, course_name, grade_value)
+        """
+        conn = sqlite3.connect(r"student_grading.db")
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM Grade WHERE student_id = ?", (student_id,))
+        query = """
+            SELECT G.student_id, S.name, G.course_id, C.name, G.grade_value
+            FROM Grade G
+            JOIN Student S ON G.student_id = S.student_id
+            JOIN Course C ON G.course_id = C.course_id
+        """
+        cursor.execute(query)
         rows = cursor.fetchall()
         conn.close()
         return rows
 
     @staticmethod
-    def update_grade(student_id, course_id, new_grade):
-        """Update an existing grade for a student in a specific course."""
-        conn = sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE Grade SET grade_value = ? WHERE student_id = ? AND course_id = ?",
-            (new_grade, student_id, course_id)
-        )
-        conn.commit()
-        conn.close()
-
-    @staticmethod
     def delete_grade(student_id, course_id):
-        """Delete a grade record for a given student and course."""
-        conn = sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
+        conn = sqlite3.connect(r"student_grading.db")
         cursor = conn.cursor()
-        cursor.execute(
-            "DELETE FROM Grade WHERE student_id = ? AND course_id = ?",
-            (student_id, course_id)
-        )
+        cursor.execute("DELETE FROM Grade WHERE student_id = ? AND course_id = ?", (student_id, course_id))
         conn.commit()
         conn.close()
+        
+        # Recalculate GPA after deletion
+        try:
+            db = DatabaseManager()
+            db.calculate_gpa(student_id, course_id)
+        except:
+            pass
 
-    def __str__(self):
-        letter = self.get_letter_grade()
-        return (
-            f"Grade -> Student ID: {self.student_id}, "
-            f"Course ID: {self.course_id}, "
-            f"Numeric Grade: {self.grade}, "
-            f"Letter Grade: {letter}"
-        )
+    def get_letter_grade(self):
+        g = self.grade_value
+        if g >= 90: return "A"
+        elif g >= 80: return "B"
+        elif g >= 70: return "C"
+        elif g >= 60: return "D"
+        else: return "F"

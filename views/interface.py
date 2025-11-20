@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QStackedWidget, QFrame, 
                              QGraphicsDropShadowEffect, QLineEdit, QTableWidget, 
                              QTableWidgetItem, QHeaderView, QAbstractItemView,
-                             QDialog, QDialogButtonBox, QMessageBox)
+                             QDialog, QDialogButtonBox, QMessageBox, QComboBox, QSpinBox, QDoubleSpinBox)
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QColor
 import qtawesome as qta 
@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 # --- Backend Imports (Your Models) ---
 from models.student import Student
 from models.instructor import Instructor
+from models.course import Course
+from models.grade import Grade
 from models.database_manager import DatabaseManager
 
 # =======================================================
@@ -39,10 +41,12 @@ class KPICard(QFrame):
         text_layout = QVBoxLayout()
         title_lbl = QLabel(title)
         title_lbl.setStyleSheet("color: #7f8c8d; font-size: 14px; font-weight: 500; border: none;")
-        value_lbl = QLabel(value)
-        value_lbl.setStyleSheet("color: #2b2b2b; font-size: 26px; font-weight: bold; border: none;")
+        
+        self.value_lbl = QLabel(value)
+        self.value_lbl.setStyleSheet("color: #2b2b2b; font-size: 26px; font-weight: bold; border: none;")
+        
         text_layout.addWidget(title_lbl)
-        text_layout.addWidget(value_lbl)
+        text_layout.addWidget(self.value_lbl)
         layout.addWidget(icon_label)
         layout.addLayout(text_layout)
         self.setLayout(layout)
@@ -52,10 +56,15 @@ class KPICard(QFrame):
         self.shadow.setYOffset(4)
         self.shadow.setColor(QColor(192, 192, 255, 0)) 
         self.setGraphicsEffect(self.shadow)
+
+    def set_value(self, new_value):
+        self.value_lbl.setText(str(new_value))
+
     def enterEvent(self, event):
         self.setStyleSheet(self.hover_style)
         self.shadow.setColor(QColor(192, 192, 255, 150)) 
         super().enterEvent(event)
+
     def leaveEvent(self, event):
         self.setStyleSheet(self.default_style)
         self.shadow.setColor(QColor(192, 192, 255, 0))
@@ -105,7 +114,6 @@ class MplCanvas(FigureCanvas):
 # 4. Dialogs (Reusable Popups)
 # =======================================================
 class AddStudentDialog(QDialog):
-    """ Dialog for adding/editing a student """
     def __init__(self, parent=None, student_data=None):
         super().__init__(parent)
         self.is_edit_mode = bool(student_data)
@@ -151,7 +159,6 @@ class AddStudentDialog(QDialog):
         layout.addWidget(QLabel("Email:"))
         layout.addWidget(self.email_input)
 
-        # --- BUTTONS SETUP: Replaced QDialogButtonBox with custom QHBoxLayout ---
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch() 
         
@@ -198,7 +205,6 @@ class AddStudentDialog(QDialog):
         return self.name_input.text(), self.email_input.text()
 
 class AddInstructorDialog(QDialog):
-    """ Dialog for adding/editing an instructor (Copy of Student Dialog) """
     def __init__(self, parent=None, instructor_data=None):
         super().__init__(parent)
         self.is_edit_mode = bool(instructor_data)
@@ -245,7 +251,6 @@ class AddInstructorDialog(QDialog):
         layout.addWidget(QLabel("Email:"))
         layout.addWidget(self.email_input)
 
-        # --- BUTTONS SETUP: Replaced QDialogButtonBox with custom QHBoxLayout ---
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch() 
         
@@ -290,6 +295,222 @@ class AddInstructorDialog(QDialog):
 
     def get_data(self):
         return self.name_input.text(), self.email_input.text()
+
+class AddCourseDialog(QDialog):
+    def __init__(self, parent=None, course_data=None):
+        super().__init__(parent)
+        self.is_edit_mode = bool(course_data)
+        self.instructor_map = {} 
+
+        if self.is_edit_mode:
+            self.setWindowTitle("Edit Course")
+            title_text = "Update Course Details"
+            btn_text = "Update Course"
+        else:
+            self.setWindowTitle("Add New Course")
+            title_text = "Enter Course Details"
+            btn_text = "Save Course"
+            
+        self.setFixedSize(420, 400) 
+        
+        self.setStyleSheet("""
+            QDialog { background-color: white; }
+            QLabel { font-size: 14px; color: #2b2b2b; font-weight: bold; }
+            QLineEdit, QComboBox, QSpinBox {
+                border: 1px solid #ccc; border-radius: 5px; padding: 5px 10px; 
+                font-size: 14px; background-color: #f9f9f9; min-height: 35px;
+            }
+            QLineEdit:focus, QComboBox:focus, QSpinBox:focus { 
+                border: 2px solid rgb(192, 192, 255); background-color: white; 
+            }
+            QComboBox::drop-down { border: none; }
+            QPushButton { padding: 8px 20px; font-size: 14px; border-radius: 5px; min-height: 35px; }
+        """)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(25, 25, 25, 25)
+        layout.setSpacing(15)
+
+        title_lbl = QLabel(title_text)
+        title_lbl.setStyleSheet("font-size: 20px; color: rgb(192, 192, 255); margin-bottom: 10px; font-weight: bold;")
+        layout.addWidget(title_lbl)
+
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("Course Name (e.g. CS101)")
+        
+        self.hours_input = QSpinBox()
+        self.hours_input.setRange(1, 6)
+        self.hours_input.setSuffix(" Hours")
+        
+        self.instructor_combo = QComboBox()
+        self.load_instructors() 
+
+        if self.is_edit_mode:
+            self.name_input.setText(course_data['name'])
+            self.hours_input.setValue(int(course_data['hours']))
+            index = self.instructor_combo.findText(course_data['instructor_name'])
+            if index >= 0:
+                self.instructor_combo.setCurrentIndex(index)
+
+        layout.addWidget(QLabel("Course Name:"))
+        layout.addWidget(self.name_input)
+        layout.addWidget(QLabel("Credit Hours:"))
+        layout.addWidget(self.hours_input)
+        layout.addWidget(QLabel("Instructor:"))
+        layout.addWidget(self.instructor_combo)
+
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+        
+        self.save_button = QPushButton(btn_text)
+        self.save_button.setCursor(Qt.PointingHandCursor)
+        self.save_button.setStyleSheet("""
+            QPushButton { background-color: rgb(192, 192, 255); color: #2b2b2b; border: none; font-weight: bold; padding: 10px; border-radius: 5px; min-width: 150px; }
+            QPushButton:hover { background-color: #a0a0ff; }
+        """)
+        self.save_button.clicked.connect(self.accept)
+
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.setCursor(Qt.PointingHandCursor)
+        self.cancel_button.setStyleSheet("""
+            QPushButton { background-color: #f0f0f0; color: #555; border: 1px solid #ccc; padding: 10px; border-radius: 5px; min-width: 150px; margin-left: 10px; }
+            QPushButton:hover { background-color: #e0e0e0; }
+        """)
+        self.cancel_button.clicked.connect(self.reject)
+
+        buttons_layout.addWidget(self.save_button)
+        buttons_layout.addWidget(self.cancel_button)
+        buttons_layout.addStretch()
+
+        layout.addLayout(buttons_layout)
+        self.setLayout(layout)
+
+    def load_instructors(self):
+        self.instructor_combo.clear()
+        instructors = Instructor.get_all_instructors()
+        for inst in instructors:
+            i_id, i_name = inst[0], inst[1]
+            self.instructor_map[i_name] = i_id
+            self.instructor_combo.addItem(i_name)
+
+    def get_data(self):
+        name = self.name_input.text()
+        hours = self.hours_input.value()
+        selected_name = self.instructor_combo.currentText()
+        inst_id = self.instructor_map.get(selected_name)
+        return name, hours, inst_id
+
+class AddGradeDialog(QDialog):
+    def __init__(self, parent=None, grade_data=None):
+        super().__init__(parent)
+        self.is_edit_mode = bool(grade_data)
+        self.student_map = {}
+        self.course_map = {}
+
+        if self.is_edit_mode:
+            self.setWindowTitle("Edit Grade")
+            title_text = "Update Student Grade"
+            btn_text = "Update Grade"
+        else:
+            self.setWindowTitle("Assign Grade")
+            title_text = "Assign New Grade"
+            btn_text = "Save Grade"
+            
+        self.setFixedSize(420, 400) 
+        
+        self.setStyleSheet("""
+            QDialog { background-color: white; }
+            QLabel { font-size: 14px; color: #2b2b2b; font-weight: bold; }
+            QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
+                border: 1px solid #ccc; border-radius: 5px; padding: 5px 10px; 
+                font-size: 14px; background-color: #f9f9f9; min-height: 35px;
+            }
+            QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus { 
+                border: 2px solid rgb(192, 192, 255); background-color: white; 
+            }
+            QComboBox::drop-down { border: none; }
+            QPushButton { padding: 8px 20px; font-size: 14px; border-radius: 5px; min-height: 35px; }
+        """)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(25, 25, 25, 25)
+        layout.setSpacing(15)
+
+        title_lbl = QLabel(title_text)
+        title_lbl.setStyleSheet("font-size: 20px; color: rgb(192, 192, 255); margin-bottom: 10px; font-weight: bold;")
+        layout.addWidget(title_lbl)
+
+        self.student_combo = QComboBox()
+        self.course_combo = QComboBox()
+        self.grade_input = QDoubleSpinBox()
+        self.grade_input.setRange(0.0, 100.0)
+        
+        self.load_data() 
+
+        if self.is_edit_mode:
+            self.student_combo.setCurrentText(grade_data['student_name'])
+            self.student_combo.setEnabled(False) 
+            self.course_combo.setCurrentText(grade_data['course_name'])
+            self.course_combo.setEnabled(False)
+            self.grade_input.setValue(float(grade_data['grade']))
+
+        layout.addWidget(QLabel("Select Student:"))
+        layout.addWidget(self.student_combo)
+        layout.addWidget(QLabel("Select Course:"))
+        layout.addWidget(self.course_combo)
+        layout.addWidget(QLabel("Grade (0-100):"))
+        layout.addWidget(self.grade_input)
+
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+        
+        self.save_button = QPushButton(btn_text)
+        self.save_button.setCursor(Qt.PointingHandCursor)
+        self.save_button.setStyleSheet("""
+            QPushButton { background-color: rgb(192, 192, 255); color: #2b2b2b; border: none; font-weight: bold; padding: 10px; border-radius: 5px; min-width: 150px; }
+            QPushButton:hover { background-color: #a0a0ff; }
+        """)
+        self.save_button.clicked.connect(self.accept)
+
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.setCursor(Qt.PointingHandCursor)
+        self.cancel_button.setStyleSheet("""
+            QPushButton { background-color: #f0f0f0; color: #555; border: 1px solid #ccc; padding: 10px; border-radius: 5px; min-width: 150px; margin-left: 10px; }
+            QPushButton:hover { background-color: #e0e0e0; }
+        """)
+        self.cancel_button.clicked.connect(self.reject)
+
+        buttons_layout.addWidget(self.save_button)
+        buttons_layout.addWidget(self.cancel_button)
+        buttons_layout.addStretch()
+
+        layout.addLayout(buttons_layout)
+        self.setLayout(layout)
+
+    def load_data(self):
+        self.student_combo.clear()
+        students = Student.get_all_students()
+        for s in students:
+            s_id, s_name = s[0], s[1]
+            self.student_map[s_name] = s_id
+            self.student_combo.addItem(s_name)
+
+        self.course_combo.clear()
+        courses = Course.get_all_courses()
+        for c in courses:
+            c_id, c_name = c[0], c[1]
+            self.course_map[c_name] = c_id
+            self.course_combo.addItem(c_name)
+
+    def get_data(self):
+        s_name = self.student_combo.currentText()
+        c_name = self.course_combo.currentText()
+        grade = self.grade_input.value()
+        
+        s_id = self.student_map.get(s_name)
+        c_id = self.course_map.get(c_name)
+        return s_id, c_id, grade
+
 
 # =======================================================
 # 5. Main Application Class
@@ -405,8 +626,13 @@ class MainApp(QMainWindow):
         self.setup_instructors_ui()
         self.content_area.addWidget(self.instructors_page)
 
-        self.content_area.addWidget(self.create_dummy_page("Courses Management"))
-        self.content_area.addWidget(self.create_dummy_page("Grades Management"))
+        self.courses_page = QWidget()
+        self.setup_courses_ui()
+        self.content_area.addWidget(self.courses_page)
+
+        self.grades_page = QWidget()
+        self.setup_grades_ui()
+        self.content_area.addWidget(self.grades_page)
 
 
         right_layout.addWidget(self.header)
@@ -424,10 +650,16 @@ class MainApp(QMainWindow):
     def switch_page(self, index, title_text):
         self.content_area.setCurrentIndex(index)
         self.header_title.setText(title_text)
+        if index == 0:
+            self.refresh_dashboard()
         if index == 1:
             self.load_students_table()
         if index == 2:
             self.load_instructors_table()
+        if index == 3:
+            self.load_courses_table()
+        if index == 4:
+            self.load_grades_table()
 
     # --- DASHBOARD LOGIC ---
     def setup_dashboard_ui(self):
@@ -436,10 +668,17 @@ class MainApp(QMainWindow):
         layout.setSpacing(20)
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(20)
-        cards_layout.addWidget(KPICard("Total Students", "0", "fa5s.user-graduate"))
-        cards_layout.addWidget(KPICard("Total Courses", "0", "fa5s.book"))
-        cards_layout.addWidget(KPICard("Instructors", "0", "fa5s.chalkboard-teacher"))
-        cards_layout.addWidget(KPICard("Avg GPA", "0.0", "fa5s.star"))
+        
+        self.card_student = KPICard("Total Students", "0", "fa5s.user-graduate")
+        self.card_course = KPICard("Total Courses", "0", "fa5s.book")
+        self.card_instructor = KPICard("Instructors", "0", "fa5s.chalkboard-teacher")
+        self.card_gpa = KPICard("Avg GPA", "0.0", "fa5s.star")
+
+        cards_layout.addWidget(self.card_student)
+        cards_layout.addWidget(self.card_course)
+        cards_layout.addWidget(self.card_instructor)
+        cards_layout.addWidget(self.card_gpa)
+        
         layout.addLayout(cards_layout)
         charts_layout = QHBoxLayout()
         charts_layout.setSpacing(20)
@@ -455,6 +694,39 @@ class MainApp(QMainWindow):
         charts_layout.addWidget(courses_card)
         layout.addLayout(charts_layout)
         self.dashboard_page.setLayout(layout)
+        
+        self.refresh_dashboard()
+
+    def refresh_dashboard(self):
+        try:
+            total_s, total_c, total_i, avg_g = self.db_manager.get_general_stats()
+            self.card_student.set_value(total_s)
+            self.card_course.set_value(total_c)
+            self.card_instructor.set_value(total_i)
+            self.card_gpa.set_value(avg_g)
+
+            # Update Grades Chart
+            dist = self.db_manager.get_grade_distribution()
+            self.canvas_grades.axes.clear()
+            labels = list(dist.keys())
+            values = list(dist.values())
+            self.bars = self.canvas_grades.axes.bar(labels, values, color='#c0c0ff')
+            self.canvas_grades.axes.set_title("")
+            self.canvas_grades.draw()
+
+            # Update Enrollment Chart
+            enroll_data = self.db_manager.get_course_enrollment_stats()
+            self.canvas_courses.axes.clear()
+            if enroll_data:
+                labels = [x[0] for x in enroll_data]
+                sizes = [x[1] for x in enroll_data]
+                self.canvas_courses.axes.pie(sizes, labels=labels, autopct='%1.1f%%', colors=['#c0c0ff', '#8080ff', '#e0e0e0', '#a0a0ff'])
+            else:
+                self.canvas_courses.axes.pie([1], labels=['No Data'], autopct='%1.1f%%', colors=['#e0e0e0'])
+            self.canvas_courses.draw()
+
+        except Exception as e:
+            print(f"Dashboard Refresh Error: {e}")
 
     def on_bar_hover(self, event):
         if event.inaxes == self.canvas_grades.axes:
@@ -477,6 +749,7 @@ class MainApp(QMainWindow):
         self.student_search = QLineEdit()
         self.student_search.setPlaceholderText("Search by ID or Name...")
         self.student_search.setFixedWidth(300)
+        self.student_search.textChanged.connect(self.filter_students)
         
         self.btn_add_student = QPushButton(" + Add Student")
         self.btn_add_student.setObjectName("add_btn") 
@@ -513,7 +786,6 @@ class MainApp(QMainWindow):
         self.students_page.setLayout(layout)
         
     def load_students_table(self):
-        """ Fetches all students from DB and populates the table """
         self.students_table.setRowCount(0)
         try:
             students = Student.get_all_students() 
@@ -562,7 +834,6 @@ class MainApp(QMainWindow):
             new_name, new_email = dialog.get_data()
             if new_name and new_email:
                 try:
-                    # Update is handled by Student object with existing ID
                     student_to_update = Student(name=new_name, email=new_email, student_id=sid)
                     student_to_update.save_to_db() 
                     self.load_students_table()
@@ -583,11 +854,9 @@ class MainApp(QMainWindow):
         confirm_box.setText(f"Are you sure you want to delete '{name}'?")
         confirm_box.setIcon(QMessageBox.Question)
         
-        # Add buttons
         yes_btn = confirm_box.addButton(QMessageBox.Yes)
         no_btn = confirm_box.addButton(QMessageBox.No)
         
-        # Style the buttons
         btn_style = """
             QPushButton { 
                 background-color: rgb(192, 192, 255); 
@@ -626,6 +895,7 @@ class MainApp(QMainWindow):
         self.instructor_search = QLineEdit()
         self.instructor_search.setPlaceholderText("Search Instructor...")
         self.instructor_search.setFixedWidth(300)
+        self.instructor_search.textChanged.connect(self.filter_instructors)
         
         self.btn_add_instructor = QPushButton(" + Add Instructor")
         self.btn_add_instructor.setObjectName("add_btn")
@@ -664,14 +934,12 @@ class MainApp(QMainWindow):
         self.load_instructors_table()
 
     def load_instructors_table(self):
-        """ Fetches all instructors from DB and populates the table """
         self.instructors_table.setRowCount(0)
         try:
             instructors = Instructor.get_all_instructors() 
             for row_idx, instructor_data in enumerate(instructors):
                 self.instructors_table.insertRow(row_idx)
                 
-                # Column 0: ID, 1: Name, 2: Email
                 self.instructors_table.setItem(row_idx, 0, QTableWidgetItem(str(instructor_data[0])))
                 self.instructors_table.setItem(row_idx, 1, QTableWidgetItem(str(instructor_data[1])))
                 self.instructors_table.setItem(row_idx, 2, QTableWidgetItem(str(instructor_data[2])))
@@ -709,7 +977,6 @@ class MainApp(QMainWindow):
             new_name, new_email = dialog.get_data()
             if new_name and new_email:
                 try:
-                    # Update is handled by Instructor object with existing ID
                     instructor_to_update = Instructor(name=new_name, email=new_email, instructor_id=iid)
                     instructor_to_update.save_to_db()
                     self.load_instructors_table()
@@ -731,11 +998,9 @@ class MainApp(QMainWindow):
         confirm_box.setText(f"Are you sure you want to delete '{name}'?")
         confirm_box.setIcon(QMessageBox.Question)
         
-        # Add buttons
         yes_btn = confirm_box.addButton(QMessageBox.Yes)
         no_btn = confirm_box.addButton(QMessageBox.No)
         
-        # Style the buttons
         btn_style = """
             QPushButton { 
                 background-color: rgb(192, 192, 255); 
@@ -761,6 +1026,339 @@ class MainApp(QMainWindow):
                 self.load_instructors_table()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Could not delete instructor: {e}")
+
+    # ---------------------------
+    # COURSES LOGIC (Page 3)
+    # ---------------------------
+    def setup_courses_ui(self):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        top_bar = QHBoxLayout()
+        self.course_search = QLineEdit()
+        self.course_search.setPlaceholderText("Search Course...")
+        self.course_search.setFixedWidth(300)
+        self.course_search.textChanged.connect(self.filter_courses)
+        
+        self.btn_add_course = QPushButton(" + Add Course")
+        self.btn_add_course.setObjectName("add_btn")
+        self.btn_add_course.setProperty("class", "action_btn")
+        self.btn_add_course.clicked.connect(self.open_add_course_dialog)
+        
+        self.btn_edit_course = QPushButton(" Edit")
+        self.btn_edit_course.setIcon(qta.icon("fa5s.edit", color="#2b2b2b"))
+        self.btn_edit_course.setProperty("class", "action_btn")
+        self.btn_edit_course.clicked.connect(self.open_edit_course_dialog)
+
+        self.btn_delete_course = QPushButton(" Delete")
+        self.btn_delete_course.setIcon(qta.icon("fa5s.trash-alt", color="#c0392b"))
+        self.btn_delete_course.setProperty("class", "action_btn")
+        self.btn_delete_course.clicked.connect(self.delete_selected_course)
+
+        top_bar.addWidget(self.course_search)
+        top_bar.addStretch()
+        top_bar.addWidget(self.btn_add_course)
+        top_bar.addWidget(self.btn_edit_course)
+        top_bar.addWidget(self.btn_delete_course)
+        layout.addLayout(top_bar)
+
+        self.courses_table = QTableWidget()
+        self.courses_table.setColumnCount(4)
+        self.courses_table.setHorizontalHeaderLabels(["ID", "Course Name", "Credit Hours", "Instructor"])
+        self.courses_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.courses_table.verticalHeader().setVisible(False)
+        self.courses_table.setAlternatingRowColors(True)
+        self.courses_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.courses_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        
+        layout.addWidget(self.courses_table)
+        self.courses_page.setLayout(layout)
+
+    def load_courses_table(self):
+        self.courses_table.setRowCount(0)
+        try:
+            courses = Course.get_all_courses()
+            for row_idx, data in enumerate(courses):
+                self.courses_table.insertRow(row_idx)
+                self.courses_table.setItem(row_idx, 0, QTableWidgetItem(str(data[0])))
+                self.courses_table.setItem(row_idx, 1, QTableWidgetItem(str(data[1])))
+                self.courses_table.setItem(row_idx, 2, QTableWidgetItem(str(data[2])))
+                self.courses_table.setItem(row_idx, 3, QTableWidgetItem(str(data[3]))) 
+                
+                self.courses_table.item(row_idx, 3).setData(Qt.UserRole, data[4])
+
+                for i in range(4):
+                    self.courses_table.item(row_idx, i).setTextAlignment(Qt.AlignCenter)
+        except Exception as e:
+            print(f"Error loading courses: {e}")
+
+    def open_add_course_dialog(self):
+        dialog = AddCourseDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            name, hours, inst_id = dialog.get_data()
+            if name and hours and inst_id:
+                try:
+                    new_course = Course(course_name=name, credit_hours=hours, instructor_id=inst_id)
+                    new_course.save_to_db()
+                    self.load_courses_table()
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Failed to add course: {e}")
+            else:
+                QMessageBox.warning(self, "Missing Data", "Please fill all fields and select an instructor.")
+
+    def open_edit_course_dialog(self):
+        row = self.courses_table.currentRow()
+        if row == -1:
+            QMessageBox.warning(self, "Warning", "Select a course to edit.")
+            return
+            
+        c_id = int(self.courses_table.item(row, 0).text())
+        name = self.courses_table.item(row, 1).text()
+        hours = self.courses_table.item(row, 2).text()
+        inst_name = self.courses_table.item(row, 3).text()
+        
+        data = {'name': name, 'hours': hours, 'instructor_name': inst_name}
+        
+        dialog = AddCourseDialog(self, course_data=data)
+        if dialog.exec_() == QDialog.Accepted:
+            new_name, new_hours, new_inst_id = dialog.get_data()
+            if new_name and new_hours and new_inst_id:
+                try:
+                    course_obj = Course(course_name=new_name, credit_hours=new_hours, 
+                                      instructor_id=new_inst_id, course_id=c_id)
+                    course_obj.save_to_db()
+                    self.load_courses_table()
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Failed to update course: {e}")
+
+    def delete_selected_course(self):
+        row = self.courses_table.currentRow()
+        if row == -1:
+            QMessageBox.warning(self, "Warning", "Select a course to delete.")
+            return
+
+        c_id = int(self.courses_table.item(row, 0).text())
+        name = self.courses_table.item(row, 1).text()
+        
+        confirm_box = QMessageBox(self)
+        confirm_box.setWindowTitle("Confirm Delete")
+        confirm_box.setText(f"Delete course '{name}'?")
+        confirm_box.setIcon(QMessageBox.Question)
+        
+        yes_btn = confirm_box.addButton(QMessageBox.Yes)
+        no_btn = confirm_box.addButton(QMessageBox.No)
+        
+        btn_style = """
+            QPushButton { 
+                background-color: rgb(192, 192, 255); 
+                color: #2b2b2b; 
+                border: none; 
+                padding: 5px 15px; 
+                min-width: 60px; 
+                border-radius: 5px; 
+                font-weight: bold; 
+            }
+            QPushButton:hover { 
+                background-color: #a0a0ff; 
+            }
+        """
+        yes_btn.setStyleSheet(btn_style)
+        no_btn.setStyleSheet(btn_style)
+
+        if confirm_box.exec_() == QMessageBox.Yes:
+            try:
+                Course.delete_course(c_id)
+                self.load_courses_table()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not delete course: {e}")
+
+    # ---------------------------
+    # GRADES LOGIC (Page 4)
+    # ---------------------------
+    def setup_grades_ui(self):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        top_bar = QHBoxLayout()
+        self.grade_search = QLineEdit()
+        self.grade_search.setPlaceholderText("Search Grade...")
+        self.grade_search.setFixedWidth(300)
+        self.grade_search.textChanged.connect(self.filter_grades)
+        
+        self.btn_add_grade = QPushButton(" + Assign Grade")
+        self.btn_add_grade.setObjectName("add_btn")
+        self.btn_add_grade.setProperty("class", "action_btn")
+        self.btn_add_grade.clicked.connect(self.open_add_grade_dialog)
+        
+        self.btn_edit_grade = QPushButton(" Edit")
+        self.btn_edit_grade.setIcon(qta.icon("fa5s.edit", color="#2b2b2b"))
+        self.btn_edit_grade.setProperty("class", "action_btn")
+        self.btn_edit_grade.clicked.connect(self.open_edit_grade_dialog)
+
+        self.btn_delete_grade = QPushButton(" Delete")
+        self.btn_delete_grade.setIcon(qta.icon("fa5s.trash-alt", color="#c0392b"))
+        self.btn_delete_grade.setProperty("class", "action_btn")
+        self.btn_delete_grade.clicked.connect(self.delete_selected_grade)
+
+        top_bar.addWidget(self.grade_search)
+        top_bar.addStretch()
+        top_bar.addWidget(self.btn_add_grade)
+        top_bar.addWidget(self.btn_edit_grade)
+        top_bar.addWidget(self.btn_delete_grade)
+        layout.addLayout(top_bar)
+
+        self.grades_table = QTableWidget()
+        self.grades_table.setColumnCount(5)
+        self.grades_table.setHorizontalHeaderLabels(["Student", "Course", "Grade", "Student ID", "Course ID"])
+        self.grades_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.grades_table.verticalHeader().setVisible(False)
+        self.grades_table.setAlternatingRowColors(True)
+        self.grades_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.grades_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.grades_table.setColumnHidden(3, True) # Hide IDs
+        self.grades_table.setColumnHidden(4, True)
+        
+        layout.addWidget(self.grades_table)
+        self.grades_page.setLayout(layout)
+
+    def load_grades_table(self):
+        self.grades_table.setRowCount(0)
+        try:
+            grades = Grade.get_all_grades_info()
+            for row_idx, data in enumerate(grades):
+                self.grades_table.insertRow(row_idx)
+                self.grades_table.setItem(row_idx, 0, QTableWidgetItem(str(data[1]))) 
+                self.grades_table.setItem(row_idx, 1, QTableWidgetItem(str(data[3]))) 
+                self.grades_table.setItem(row_idx, 2, QTableWidgetItem(str(data[4]))) 
+                self.grades_table.setItem(row_idx, 3, QTableWidgetItem(str(data[0]))) 
+                self.grades_table.setItem(row_idx, 4, QTableWidgetItem(str(data[2]))) 
+
+                for i in range(3):
+                    self.grades_table.item(row_idx, i).setTextAlignment(Qt.AlignCenter)
+        except Exception as e:
+            print(f"Error loading grades: {e}")
+
+    def open_add_grade_dialog(self):
+        dialog = AddGradeDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            s_id, c_id, grade_val = dialog.get_data()
+            if s_id and c_id:
+                try:
+                    new_grade = Grade(student_id=s_id, course_id=c_id, grade_value=grade_val)
+                    new_grade.assign_grade()
+                    self.load_grades_table()
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Failed to assign grade: {e}")
+
+    def open_edit_grade_dialog(self):
+        row = self.grades_table.currentRow()
+        if row == -1:
+            QMessageBox.warning(self, "Warning", "Select a grade to edit.")
+            return
+
+        s_name = self.grades_table.item(row, 0).text()
+        c_name = self.grades_table.item(row, 1).text()
+        grade_val = self.grades_table.item(row, 2).text()
+        s_id = int(self.grades_table.item(row, 3).text())
+        c_id = int(self.grades_table.item(row, 4).text())
+
+        data = {'student_name': s_name, 'course_name': c_name, 'grade': grade_val}
+        
+        dialog = AddGradeDialog(self, grade_data=data)
+        if dialog.exec_() == QDialog.Accepted:
+            _, _, new_grade_val = dialog.get_data()
+            try:
+                grade_obj = Grade(student_id=s_id, course_id=c_id, grade_value=new_grade_val)
+                grade_obj.assign_grade()
+                self.load_grades_table()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to update grade: {e}")
+
+    def delete_selected_grade(self):
+        row = self.grades_table.currentRow()
+        if row == -1:
+            QMessageBox.warning(self, "Warning", "Select a grade to delete.")
+            return
+
+        s_name = self.grades_table.item(row, 0).text()
+        c_name = self.grades_table.item(row, 1).text()
+        s_id = int(self.grades_table.item(row, 3).text())
+        c_id = int(self.grades_table.item(row, 4).text())
+        
+        confirm_box = QMessageBox(self)
+        confirm_box.setWindowTitle("Confirm Delete")
+        confirm_box.setText(f"Delete grade for {s_name} in {c_name}?")
+        confirm_box.setIcon(QMessageBox.Question)
+        
+        yes_btn = confirm_box.addButton(QMessageBox.Yes)
+        no_btn = confirm_box.addButton(QMessageBox.No)
+        
+        btn_style = """
+            QPushButton { 
+                background-color: rgb(192, 192, 255); 
+                color: #2b2b2b; 
+                border: none; 
+                padding: 5px 15px; 
+                min-width: 60px; 
+                border-radius: 5px; 
+                font-weight: bold; 
+            }
+            QPushButton:hover { 
+                background-color: #a0a0ff; 
+            }
+        """
+        yes_btn.setStyleSheet(btn_style)
+        no_btn.setStyleSheet(btn_style)
+
+        if confirm_box.exec_() == QMessageBox.Yes:
+            try:
+                Grade.delete_grade(s_id, c_id)
+                self.load_grades_table()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not delete grade: {e}")
+
+    # --- SEARCH LOGIC ---
+    def filter_students(self):
+        text = self.student_search.text().lower()
+        for row in range(self.students_table.rowCount()):
+            match = False
+            for col in [0, 1]:
+                item = self.students_table.item(row, col)
+                if item and text in item.text().lower():
+                    match = True
+                    break
+            self.students_table.setRowHidden(row, not match)
+
+    def filter_instructors(self):
+        text = self.instructor_search.text().lower()
+        for row in range(self.instructors_table.rowCount()):
+            match = False
+            item = self.instructors_table.item(row, 1)
+            if item and text in item.text().lower():
+                match = True
+            self.instructors_table.setRowHidden(row, not match)
+
+    def filter_courses(self):
+        text = self.course_search.text().lower()
+        for row in range(self.courses_table.rowCount()):
+            match = False
+            item = self.courses_table.item(row, 1)
+            if item and text in item.text().lower():
+                match = True
+            self.courses_table.setRowHidden(row, not match)
+
+    def filter_grades(self):
+        text = self.grade_search.text().lower()
+        for row in range(self.grades_table.rowCount()):
+            match = False
+            for col in [0, 1]:
+                item = self.grades_table.item(row, col)
+                if item and text in item.text().lower():
+                    match = True
+                    break
+            self.grades_table.setRowHidden(row, not match)
 
     # --- HELPERS ---
     def create_nav_btn(self, text, icon_name):

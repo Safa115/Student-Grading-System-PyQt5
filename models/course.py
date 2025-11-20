@@ -1,10 +1,12 @@
 import sqlite3
+
 class Course:
-    def __init__(self, course_id: int, course_name: str, credit_hours: int, instructor_id: int):
-        self.course_id = course_id
-        self.course_name = course_name
-        self.credit_hours = credit_hours
-        self.instructor_id = instructor_id
+    def __init__(self, course_name: str, credit_hours: int, instructor_id: int, course_id: int = None):
+        # Use setters/internal variables directly to avoid conflict
+        self.__course_id = course_id
+        self.__course_name = course_name
+        self.__credit_hours = credit_hours
+        self.__instructor_id = instructor_id
 
     # ---------- Encapsulation ----------
     def get_course_id(self):
@@ -23,8 +25,8 @@ class Course:
         return self.__credit_hours
 
     def set_credit_hours(self, credit_hours: int):
-        if credit_hours > 0:
-            self.__credit_hours = credit_hours
+        if int(credit_hours) > 0:
+            self.__credit_hours = int(credit_hours)
         else:
             raise ValueError("Credit hours must be positive")
 
@@ -38,65 +40,54 @@ class Course:
     @staticmethod
     def connect():
         """Connect to the SQLite database."""
-        return sqlite3.connect(r"C:\StudentGradingSystem\student_grading.db")
+       
+        return sqlite3.connect(r"student_grading.db")
 
     def save_to_db(self):
-      """
-    Saves the course to the database.
-    If a course with the same name already exists, use its ID instead of inserting a new one.
-    """
-      conn = sqlite3.connect("C:\\StudentGradingSystem\\student_grading.db")
-      cursor = conn.cursor()
+        """
+        Saves the course to the database (Insert or Update).
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
 
-      # Check if course already exists by name
-      cursor.execute("SELECT course_id FROM Course WHERE name = ?", (self.course_name,))
-      existing = cursor.fetchone()
+        if self.__course_id is not None:
+           
+            cursor.execute("""
+                UPDATE Course
+                SET name = ?, credit_hours = ?, instructor_id = ?
+                WHERE course_id = ?
+            """, (self.__course_name, self.__credit_hours, self.__instructor_id, self.__course_id))
+            print(f"Course ID {self.__course_id} updated successfully.")
+        else:
+            # INSERT Logic
+            cursor.execute("""
+                INSERT INTO Course (name, credit_hours, instructor_id)
+                VALUES (?, ?, ?)
+            """, (self.__course_name, self.__credit_hours, self.__instructor_id))
+            self.__course_id = cursor.lastrowid
+            print(f"New course '{self.__course_name}' added with ID {self.__course_id}.")
 
-      if existing:
-        self.course_id = existing[0]
-        print(f"Course '{self.course_name}' already exists with ID {self.course_id}.")
-      else:
-        cursor.execute("""
-            INSERT INTO Course (name, credit_hours, instructor_id)
-            VALUES (?, ?, ?)
-        """, (self.course_name, self.credit_hours, self.instructor_id))
-        self.course_id = cursor.lastrowid
         conn.commit()
-        print(f"New course '{self.course_name}' added with ID {self.course_id}.")
-
-      conn.close()
+        conn.close()
 
     @staticmethod
     def get_all_courses():
-        """Retrieve all courses from the database."""
+        """
+        Retrieve all courses with Instructor Name instead of just ID.
+        Returns: list of tuples (course_id, course_name, credit_hours, instructor_name, instructor_id)
+        """
         conn = Course.connect()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM Course")
+        # Join to get Instructor Name
+        query = """
+            SELECT C.course_id, C.name, C.credit_hours, I.name, C.instructor_id 
+            FROM Course C
+            LEFT JOIN Instructor I ON C.instructor_id = I.instructor_id
+        """
+        cursor.execute(query)
         rows = cursor.fetchall()
         conn.close()
         return rows
-
-    @staticmethod
-    def get_course_by_id(course_id: int):
-        """Retrieve a course by its ID."""
-        conn = Course.connect()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM Course WHERE course_id = ?", (course_id,))
-        row = cursor.fetchone()
-        conn.close()
-        return row
-
-    def update_course(self):
-        """Update course details in the database."""
-        conn = self.connect()
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE Course
-            SET name = ?, credit_hours = ?, instructor_id = ?
-            WHERE course_id = ?
-        """, (self.course_name, self.credit_hours, self.instructor_id, self.course_id))
-        conn.commit()
-        conn.close()
 
     @staticmethod
     def delete_course(course_id: int):
@@ -106,61 +97,3 @@ class Course:
         cursor.execute("DELETE FROM Course WHERE course_id = ?", (course_id,))
         conn.commit()
         conn.close()
-    #---------- Additional Methods ----------
-
-    def enroll_student(self, student_id:int):
-     """
-       Enroll a student in this course by adding a record to the Enrollment table.
-     """
-     conn = self.connect()
-     cursor = conn.cursor()
-
-     # Check if already enrolled
-     cursor.execute("""
-        SELECT * FROM Enrollment WHERE student_id = ? AND course_id = ?
-     """, (student_id, self.course_id))
-     exists = cursor.fetchone()
-
-     if exists:
-        print(f" Student {student_id} is already enrolled in course {self.course_id}.")
-     else:
-        cursor.execute("""
-            INSERT INTO Enrollment (student_id, course_id)
-            VALUES (?, ?)
-        """, (student_id, self.course_id))
-        conn.commit()
-        print(f"Student {student_id} enrolled successfully in {self.course_name}.")
-
-     conn.close()
-
-       
-    def course_summary(self):
-     """
-     Returns a summary of the course with instructor name and number of enrolled students.
-     """
-     conn = self.connect()
-     cursor = conn.cursor()
-
-    # Instructor name
-     cursor.execute("SELECT name FROM Instructor WHERE instructor_id = ?", (self.instructor_id,))
-     instructor_row = cursor.fetchone()
-     instructor_name = instructor_row[0] if instructor_row else "Unknown"
-
-    # Number of enrolled students
-     cursor.execute("SELECT COUNT(*) FROM Enrollment WHERE course_id = ?", (self.course_id,))
-     count_row = cursor.fetchone()
-     enrolled_count = count_row[0] if count_row else 0
-
-     conn.close()
-
-     return (
-        f"📘 Course Summary:\n"
-        f"- ID: {self.course_id}\n"
-        f"- Name: {self.course_name}\n"
-        f"- Credit Hours: {self.credit_hours}\n"
-        f"- Instructor: {instructor_name}\n"
-        f"- Enrolled Students: {enrolled_count}"
-    )
-
-    
-
